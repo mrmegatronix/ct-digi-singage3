@@ -1,0 +1,5 @@
+{
+  "name": "ct-digi-signage3",
+  "description": "A dynamic digital signage application for daily specials with an integrated admin dashboard for real-time updates and AI-powered copy assistance.",
+  "requestFramePermissions": []
+}

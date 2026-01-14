@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coasters Tavern Digital Signage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #000;
+            color: #f3f4f6;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            cursor: none; /* Hide cursor for signage mode */
+        }
+        /* Show cursor when admin modal is open or hovering controls */
+        body.admin-mode {
+            cursor: default;
+        }
+
+        h1, h2, h3, .serif {
+            font-family: 'Playfair Display', serif;
+        }
+        
+        /* Ken Burns Effect */
+        @keyframes kenburns {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.15); }
+        }
+        .animate-ken-burns {
+            animation: kenburns 30s infinite alternate linear;
+        }
+
+        /* Slide Transitions */
+        .slide {
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #18181b; /* fallback bg */
+            pointer-events: none;
+        }
+        .slide.active {
+            opacity: 1;
+            z-index: 10;
+        }
+
+        /* Responsive Text Utilities */
+        .text-responsive-h1 { font-size: 13vh; line-height: 1.1; }
+        .text-responsive-h2 { font-size: 8vh; line-height: 1.2; }
+        .text-responsive-price { font-size: 18vh; line-height: 1; }
+        .text-responsive-desc { font-size: 4.5vh; line-height: 1.4; }
+        .text-responsive-badge { font-size: 2.5vh; letter-spacing: 0.2em; }
+        .text-responsive-temp { font-size: 28vh; line-height: 1; }
+        
+        /* Forecast Grid */
+        .forecast-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1vw;
+            width: 100%;
+        }
+        .forecast-item {
+            background: rgba(255,255,255,0.07);
+            border-radius: 1rem;
+            padding: 1.5vh 0.5vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* --- Weather Animations --- */
+        @keyframes w-spin { to { transform: rotate(360deg); } }
+        @keyframes w-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        @keyframes w-float-delayed { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        @keyframes w-rain { 0% { transform: translateY(-5px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(20px); opacity: 0; } }
+        @keyframes w-flash { 0%, 90%, 100% { opacity: 0; } 92% { opacity: 1; } 93% { opacity: 0.2; } 94% { opacity: 1; } }
+        @keyframes w-pan { 0% { transform: translateX(-5px); opacity: 0.7; } 50% { transform: translateX(5px); opacity: 1; } 100% { transform: translateX(-5px); opacity: 0.7; } }
+        
+        .anim-spin { animation: w-spin 12s linear infinite; transform-origin: 32px 32px; }
+        .anim-float { animation: w-float 5s ease-in-out infinite; }
+        .anim-float-d { animation: w-float-delayed 6s ease-in-out infinite; animation-delay: 1s; }
+        .anim-rain-1 { animation: w-rain 1s linear infinite; }
+        .anim-rain-2 { animation: w-rain 1.2s linear infinite; animation-delay: 0.4s; }
+        .anim-rain-3 { animation: w-rain 0.8s linear infinite; animation-delay: 0.2s; }
+        .anim-snow-1 { animation: w-rain 3s linear infinite; }
+        .anim-snow-2 { animation: w-rain 2.5s linear infinite; animation-delay: 1s; }
+        .anim-flash { animation: w-flash 5s infinite; }
+        .anim-pan { animation: w-pan 4s ease-in-out infinite; }
+
+        /* --- Progress Bar Animation --- */
+        @keyframes progress {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+        .animate-progress {
+            animation-name: progress;
+            animation-timing-function: linear;
+            animation-fill-mode: forwards;
+        }
+
+        /* --- Admin UI --- */
+        #admin-btn {
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #admin-btn:hover {
+            opacity: 1;
+        }
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+        }
+        .form-input {
+            width: 100%;
+            background-color: #27272a; /* zinc-800 */
+            border: 1px solid #3f3f46; /* zinc-700 */
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            color: white;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus {
+            border-color: #f59e0b; /* amber-500 */
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="app" class="relative w-screen h-screen bg-black">
+        <!-- Slides injected here -->
+    </div>
+
+    <!-- Admin Button -->
+    <button id="admin-btn" class="fixed top-4 right-4 z-50 p-3 bg-zinc-800 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 transition shadow-lg cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+
+    <!-- Admin Modal -->
+    <div id="admin-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
+        <div class="bg-zinc-900 border border-zinc-700 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-6 border-b border-zinc-800">
+                <h2 class="text-2xl font-bold text-white font-serif">Edit Specials</h2>
+                <button id="close-modal-btn" class="text-zinc-400 hover:text-white transition cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-zinc-400 mb-2">Select Day to Edit</label>
+                    <select id="day-selector" class="form-input cursor-pointer">
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+
+                <form id="edit-form" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-zinc-400 mb-1">Title</label>
+                            <input type="text" id="input-title" class="form-input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-zinc-400 mb-1">Price</label>
+                            <input type="text" id="input-price" class="form-input">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-zinc-400">Description</label>
+                            <button type="button" id="ai-enhance-btn" class="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-400 transition font-semibold cursor-pointer">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M7 3v4"/><path d="M3 7h4"/><path d="M3 5h4"/></svg>
+                                <span>AI Enhance</span>
+                            </button>
+                        </div>
+                        <textarea id="input-description" rows="3" class="form-input resize-none"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-zinc-400 mb-1">Image URL</label>
+                        <div class="flex gap-4">
+                            <input type="text" id="input-image" class="form-input flex-1">
+                            <div class="w-16 h-10 rounded overflow-hidden bg-zinc-700 shrink-0 border border-zinc-600">
+                                <img id="preview-image" src="" class="w-full h-full object-cover">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-zinc-400 mb-1">Highlight Color</label>
+                        <div class="flex gap-3 items-center">
+                            <input type="color" id="input-color" class="h-10 w-20 bg-transparent border-0 cursor-pointer p-0 rounded overflow-hidden">
+                            <span id="color-code" class="text-zinc-500 text-sm font-mono"></span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="p-6 border-t border-zinc-800 flex justify-end gap-4">
+                <button id="cancel-btn" class="px-4 py-2 text-zinc-300 hover:text-white font-medium transition cursor-pointer">Cancel</button>
+                <button id="save-btn" class="flex items-center gap-2 px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition shadow-lg hover:shadow-amber-500/20 cursor-pointer">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="absolute inset-0 flex items-center justify-center bg-zinc-900 z-50 transition-opacity duration-500">
+        <h1 class="text-4xl text-white animate-pulse">Loading Specials...</h1>
+    </div>
+
+    <script type="module">
+        import { GoogleGenAI, Type } from "@google/genai";
+
+        // --- POLYFILL FOR ENV ---
+        window.process = window.process || { env: { API_KEY: '' } };
+
+        // --- DATA ---
+        const LOGO_URL = "https://www.coasterstavern.co.nz/wp-content/uploads/2021/07/Coasters-Logo-Web.png";
+        const STORAGE_KEY = 'coasters_specials_v1';
+        
+        const DEFAULT_SPECIALS = [
+            { id: '1', day: 'Monday', title: "Steak Day Monday's", description: 'Start your week off with a 200g Succulent Rump Steak, cooked to your liking, served with golden fries and a green garden salad.', price: '$24', imageUrl: 'https://coasterstavern.co.nz/wp-content/uploads/2024/06/Coasters-Tavern-Standard-Crops-200624-6-1290x570.jpg', highlightColor: '#f59e0b' },
+            { id: '2', day: 'Tuesday', title: 'Chase the Ace', description: "Purchase a beverage between 3.30pm and 5.30pm and your in the draw.", price: 'Draw @ 5:30pm', imageUrl: 'https://coasterstavern.co.nz/wp-content/uploads/2024/11/Coasters-Tavern-Standard-121124-16-1290x570.jpg', highlightColor: '#ef4444' },
+            { id: '3', day: 'Wednesday', title: 'Quiz Night', description: 'Starting back on the 21st January 2026, $190 in prizes up for grabs. Bookings Essential.', price: '$20', imageUrl: 'https://www.coasterstavern.co.nz/wp-content/uploads/2022/02/schnitzel.jpg', highlightColor: '#eab308' },
+            { id: '4', day: 'Thursday', title: 'Burger Day Thursdays & Happy Hours', description: 'Your choice of Chicken, Beer Battered Fish, Pork Belly or Coasters Beef. All served with Golden Fries & Onion Rings. 1 Burger for $19 or 2 for $35. Available from 12pm. Free Pool all day!', price: 'Free Pool!', imageUrl: 'https://www.coasterstavern.co.nz/wp-content/uploads/2022/02/ribs.jpg', highlightColor: '#f97316' },
+            { id: '5', day: 'Friday', title: 'Happy Hours 10%', description: 'Enjoy 10% discount on selected beverages between 4.30pm & 6.30pm.', price: '10% Off!', imageUrl: 'https://www.coasterstavern.co.nz/wp-content/uploads/2022/02/fish-chips.jpg', highlightColor: '#3b82f6' },
+            { id: '6', day: 'Saturday', title: 'Chase the Ace', description: 'Tickets from 3.30pm. A bountiful selection of calamari, prawns, fish bites, and mussels. Perfect for sharing.', price: '$35', imageUrl: 'https://www.coasterstavern.co.nz/wp-content/uploads/2022/02/platter.jpg', highlightColor: '#06b6d4' },
+            { id: '7', day: 'Sunday', title: 'Two Course Sunday Roast', description: 'Traditional roast of the day with roasted vegetables, seasonal greens and rich gravy, with an Ice Cream Sundae to finish.', price: '$28', imageUrl: 'https://www.coasterstavern.co.nz/wp-content/uploads/2022/02/roast.jpg', highlightColor: '#84cc16' }
+        ];
+
+        let specialsData = [];
+        let weatherData = null;
+        let slideInterval = null;
+        let currentSlideIndex = 0;
+        let isPaused = false;
+        
+        const SLIDE_DURATION = 30000;
+        const WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast?latitude=-43.5321&longitude=172.6362&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Pacific%2FAuckland";
+
+        // --- STORAGE SERVICE ---
+        function loadSpecials() {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (stored) {
+                    return JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error("Storage error", e);
+            }
+            return JSON.parse(JSON.stringify(DEFAULT_SPECIALS)); // Deep copy defaults
+        }
+
+        function saveSpecials(data) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+
+        // --- WEATHER UTILS ---
+        const getWeatherIcon = (code) => {
+            const viewBox = 'viewBox="0 0 64 64"';
+            const defs = `<defs><linearGradient id="gradSun" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#FDB813;stop-opacity:1" /><stop offset="100%" style="stop-color:#F59E0B;stop-opacity:1" /></linearGradient><linearGradient id="gradCloud" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" /><stop offset="100%" style="stop-color:#E5E7EB;stop-opacity:1" /></linearGradient><linearGradient id="gradRain" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" /><stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" /></linearGradient></defs>`;
+            
+            if (code === 0) return `<svg ${viewBox} class="w-full h-full overflow-visible">${defs}<g class="anim-spin"><circle cx="32" cy="32" r="14" fill="url(#gradSun)" /><path d="M32 6V12 M32 52V58 M58 32H52 M12 32H6 M50.4 13.6L46.1 17.9 M17.9 46.1L13.6 50.4 M50.4 50.4L46.1 46.1 M17.9 17.9L13.6 13.6" stroke="url(#gradSun)" stroke-width="4" stroke-linecap="round" /></g></svg>`;
+            if (code <= 3) return `<svg ${viewBox} class="w-full h-full overflow-visible">${defs}<g class="anim-spin" style="transform-origin: 40px 24px; opacity: 0.8;"><circle cx="40" cy="24" r="10" fill="url(#gradSun)" /><path d="M40 8V12 M40 36V40 M56 24H52 M28 24H24" stroke="url(#gradSun)" stroke-width="3" stroke-linecap="round" /></g><path class="anim-float" d="M46 48H18c-4.4 0-8-3.6-8-8 0-4.1 3.1-7.5 7.1-7.9.6-4.6 4.5-8.1 9.2-8.1 3.5 0 6.6 1.9 8.3 4.8 1.1-.5 2.3-.8 3.6-.8 4.4 0 8 3.6 8 8 0 4.4-3.6 8-8 8z" fill="url(#gradCloud)" /></svg>`;
+            if (code <= 48) return `<svg ${viewBox} class="w-full h-full overflow-visible"><g class="anim-pan" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"><line x1="10" y1="20" x2="40" y2="20" /><line x1="24" y1="32" x2="54" y2="32" /><line x1="14" y1="44" x2="44" y2="44" /></g></svg>`;
+            if (code <= 67 || (code >= 80 && code <= 82)) return `<svg ${viewBox} class="w-full h-full overflow-visible">${defs}<path class="anim-float" d="M46 38H18c-4.4 0-8-3.6-8-8 0-4.1 3.1-7.5 7.1-7.9.6-4.6 4.5-8.1 9.2-8.1 3.5 0 6.6 1.9 8.3 4.8 1.1-.5 2.3-.8 3.6-.8 4.4 0 8 3.6 8 8 0 4.4-3.6 8-8 8z" fill="url(#gradCloud)" /><g fill="url(#gradRain)"><rect x="22" y="42" width="3" height="6" rx="1.5" class="anim-rain-1" /><rect x="30" y="42" width="3" height="6" rx="1.5" class="anim-rain-2" /><rect x="38" y="42" width="3" height="6" rx="1.5" class="anim-rain-3" /></g></svg>`;
+            if (code <= 77) return `<svg ${viewBox} class="w-full h-full overflow-visible">${defs}<path class="anim-float" d="M46 38H18c-4.4 0-8-3.6-8-8 0-4.1 3.1-7.5 7.1-7.9.6-4.6 4.5-8.1 9.2-8.1 3.5 0 6.6 1.9 8.3 4.8 1.1-.5 2.3-.8 3.6-.8 4.4 0 8 3.6 8 8 0 4.4-3.6 8-8 8z" fill="url(#gradCloud)" /><g fill="#FFFFFF"><circle cx="24" cy="46" r="2" class="anim-snow-1" /><circle cx="36" cy="44" r="2" class="anim-snow-2" /></g></svg>`;
+            if (code >= 95) return `<svg ${viewBox} class="w-full h-full overflow-visible">${defs}<path class="anim-float-d" d="M46 38H18c-4.4 0-8-3.6-8-8 0-4.1 3.1-7.5 7.1-7.9.6-4.6 4.5-8.1 9.2-8.1 3.5 0 6.6 1.9 8.3 4.8 1.1-.5 2.3-.8 3.6-.8 4.4 0 8 3.6 8 8 0 4.4-3.6 8-8 8z" fill="#6B7280" /><path class="anim-flash" d="M30 36 L24 48 L30 48 L26 60 L38 44 L32 44 Z" fill="#F59E0B" stroke="#FEF3C7" stroke-width="1" /></svg>`;
+            return `<svg ${viewBox} class="w-full h-full">${defs}<path d="M46 44H18c-4.4 0-8-3.6-8-8 0-4.1 3.1-7.5 7.1-7.9.6-4.6 4.5-8.1 9.2-8.1 3.5 0 6.6 1.9 8.3 4.8 1.1-.5 2.3-.8 3.6-.8 4.4 0 8 3.6 8 8 0 4.4-3.6 8-8 8z" fill="url(#gradCloud)" /></svg>`;
+        };
+
+        const getWeatherDesc = (code) => {
+            if (code === 0) return "Clear Sky";
+            if (code <= 3) return "Partly Cloudy";
+            if (code <= 48) return "Foggy";
+            if (code <= 67) return "Rainy";
+            if (code <= 77) return "Snow";
+            if (code <= 82) return "Showers";
+            return "Thunderstorms";
+        };
+
+        const getDayName = (dateStr) => {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-NZ', { weekday: 'short' });
+        };
+
+        // --- APP LOGIC ---
+
+        async function initApp() {
+            specialsData = loadSpecials();
+            
+            // Initial render
+            await fetchWeather();
+            renderApp();
+            startSlideshow();
+
+            document.getElementById('loading').style.opacity = '0';
+            setTimeout(() => document.getElementById('loading').remove(), 500);
+
+            setupAdmin();
+        }
+
+        async function fetchWeather() {
+            try {
+                const fetchPromise = fetch(WEATHER_API_URL).then(r => r.json());
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+                const data = await Promise.race([fetchPromise, timeoutPromise]);
+                if (data && data.current && data.daily) {
+                    weatherData = data;
+                }
+            } catch (e) {
+                console.log("Weather fetch failed", e);
+            }
+        }
+
+        function renderApp() {
+            const app = document.getElementById('app');
+            let slidesHtml = '';
+
+            // Specials Slides
+            specialsData.forEach((special, idx) => {
+                slidesHtml += renderSpecial(special, idx);
+            });
+
+            // Weather Slides (appended after specials)
+            const baseIdx = specialsData.length;
+            if (weatherData) {
+                slidesHtml += renderWeatherCurrent({
+                    temp: Math.round(weatherData.current.temperature_2m),
+                    code: weatherData.current.weather_code
+                }, baseIdx);
+                slidesHtml += renderForecast({ daily: weatherData.daily }, baseIdx + 1);
+            }
+
+            slidesHtml += renderProgressBar();
+            app.innerHTML = slidesHtml;
+
+            // Re-apply active state to current slide if it exists, else 0
+            const totalSlides = specialsData.length + (weatherData ? 2 : 0);
+            if (currentSlideIndex >= totalSlides) currentSlideIndex = 0;
+            
+            const slides = document.querySelectorAll('.slide');
+            if(slides.length > 0) {
+                slides.forEach(s => s.classList.remove('active'));
+                slides[currentSlideIndex].classList.add('active');
+            }
+        }
+
+        function startSlideshow() {
+            const progressBar = document.getElementById('progress-bar');
+            if(progressBar) {
+                progressBar.style.animationDuration = `${SLIDE_DURATION}ms`;
+                progressBar.classList.add('animate-progress');
+                
+                progressBar.addEventListener('animationend', handleSlideChange);
+            }
+        }
+
+        function handleSlideChange() {
+            if (isPaused) return;
+
+            const slides = document.querySelectorAll('.slide');
+            const total = slides.length;
+            if (total === 0) return;
+
+            slides[currentSlideIndex].classList.remove('active');
+            currentSlideIndex = (currentSlideIndex + 1) % total;
+            slides[currentSlideIndex].classList.add('active');
+
+            const progressBar = document.getElementById('progress-bar');
+            if(progressBar) {
+                progressBar.classList.remove('animate-progress');
+                void progressBar.offsetWidth; // Force reflow
+                progressBar.classList.add('animate-progress');
+            }
+        }
+
+        // --- TEMPLATES ---
+
+        function renderSpecial(data, idx) {
+            return `
+            <div class="slide bg-zinc-900" id="slide-${idx}">
+                <div class="absolute inset-0 overflow-hidden">
+                    <img src="${data.imageUrl}" class="w-full h-full object-cover opacity-60 animate-ken-burns" onerror="this.style.display='none'">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black via-zinc-900/70 to-zinc-900/40"></div>
+                </div>
+                <div class="absolute top-[5vh] left-[5vw] z-30">
+                     <img src="${LOGO_URL}" class="w-[20vw] drop-shadow-xl" alt="Coasters Tavern" onerror="this.style.display='none'">
+                </div>
+                <div class="absolute inset-0 flex flex-col justify-center items-center text-center px-[5vw] z-20">
+                    <div class="mb-[3vh]">
+                        <span class="inline-block px-[2vw] py-[1vh] uppercase font-bold text-white bg-black/50 backdrop-blur-md rounded-full border border-white/20 text-responsive-badge">
+                            ${data.day} Special
+                        </span>
+                    </div>
+                    <h1 class="text-responsive-h1 font-bold mb-[2vh] text-white drop-shadow-2xl serif">
+                        ${data.title}
+                    </h1>
+                    <div class="h-[1vh] w-[15vw] mb-[4vh] rounded" style="background-color: ${data.highlightColor}"></div>
+                    <p class="text-responsive-desc text-zinc-100 max-w-[80vw] mb-[5vh] font-light drop-shadow-lg">
+                        ${data.description}
+                    </p>
+                    <div class="relative px-[4vw] py-[1vh] bg-black/80 border border-white/20 rounded-2xl backdrop-blur-md">
+                        <span class="text-responsive-price font-bold text-white tracking-tighter block">
+                            ${data.price}
+                        </span>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderWeatherCurrent(data, idx) {
+            return `
+            <div class="slide bg-zinc-900" id="slide-${idx}">
+                <div class="absolute inset-0 bg-gradient-to-br from-blue-900 via-zinc-900 to-black"></div>
+                <div class="absolute top-[5vh] left-[5vw] z-30">
+                     <img src="${LOGO_URL}" class="w-[20vw] drop-shadow-xl" alt="Coasters Tavern" onerror="this.style.display='none'">
+                </div>
+                <div class="absolute inset-0 flex flex-col justify-center items-center text-center p-[5vh] z-20">
+                     <h2 class="text-responsive-h2 uppercase tracking-widest text-blue-300 mb-[4vh] font-bold">Live Weather</h2>
+                     <div class="w-[20vh] h-[20vh] mb-[4vh]">
+                        ${getWeatherIcon(data.code)}
+                     </div>
+                     <h1 class="text-responsive-temp font-bold text-white mb-[2vh]">${data.temp}&deg;</h1>
+                     <p class="text-responsive-desc text-zinc-300 font-light uppercase tracking-wide">
+                        ${getWeatherDesc(data.code)}
+                     </p>
+                </div>
+            </div>`;
+        }
+
+        function renderForecast(data, idx) {
+            const daily = data.daily;
+            let gridHtml = '';
+            for(let i = 7; i < 7; i++) {
+                gridHtml += `
+                    <div class="forecast-item">
+                        <span class="text-[2.5vh] text-zinc-400 font-bold uppercase mb-[1vh]">${getDayName(daily.time[i])}</span>
+                        <div class="w-[8vh] h-[8vh] mb-[1vh]">
+                            ${getWeatherIcon(daily.weather_code[i])}
+                        </div>
+                        <div class="flex flex-col items-center">
+                             <span class="text-[5vh] font-bold text-white leading-none">${Math.round(daily.temperature_2m_max[i])}&deg;</span>
+                             <span class="text-[3vh] font-medium text-zinc-500">${Math.round(daily.temperature_2m_min[i])}&deg;</span>
+                        </div>
+                    </div>
+                `;
+            }
+            // Fix loop to actually run
+             gridHtml = '';
+             for(let i = 0; i < 7; i++) {
+                gridHtml += `
+                    <div class="forecast-item">
+                        <span class="text-[2.5vh] text-zinc-400 font-bold uppercase mb-[1vh]">${getDayName(daily.time[i])}</span>
+                        <div class="w-[8vh] h-[8vh] mb-[1vh]">
+                            ${getWeatherIcon(daily.weather_code[i])}
+                        </div>
+                        <div class="flex flex-col items-center">
+                             <span class="text-[5vh] font-bold text-white leading-none">${Math.round(daily.temperature_2m_max[i])}&deg;</span>
+                             <span class="text-[3vh] font-medium text-zinc-500">${Math.round(daily.temperature_2m_min[i])}&deg;</span>
+                        </div>
+                    </div>
+                `;
+            }
+            return `
+            <div class="slide bg-zinc-900" id="slide-${idx}">
+                <div class="absolute inset-0 bg-gradient-to-br from-slate-900 to-zinc-950"></div>
+                <div class="absolute top-[5vh] left-[5vw] z-30">
+                     <img src="${LOGO_URL}" class="w-[20vw] drop-shadow-xl" alt="Coasters Tavern" onerror="this.style.display='none'">
+                </div>
+                <div class="absolute inset-0 flex flex-col justify-center items-center px-[5vw] py-[5vh] z-20">
+                     <h2 class="text-responsive-h2 font-serif text-white mb-[6vh] border-b-2 border-amber-500 pb-[1vh] px-[5vw]">7 Day Forecast</h2>
+                     <div class="forecast-grid">
+                        ${gridHtml}
+                     </div>
+                </div>
+            </div>`;
+        }
+        
+        function renderProgressBar() {
+            return `
+            <div class="absolute bottom-0 left-0 w-full h-[1.5vh] bg-zinc-900/50 z-50 border-t border-white/5">
+                <div id="progress-bar" class="h-full w-0 shadow-[0_0_15px_rgba(251,191,36,0.8)]" 
+                     style="background: linear-gradient(90deg, #b45309, #fbbf24, #f59e0b, #b45309);">
+                </div>
+            </div>`;
+        }
+
+        // --- ADMIN FUNCTIONS ---
+
+        function setupAdmin() {
+            const adminBtn = document.getElementById('admin-btn');
+            const modal = document.getElementById('admin-modal');
+            const closeBtn = document.getElementById('close-modal-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            const saveBtn = document.getElementById('save-btn');
+            const daySelector = document.getElementById('day-selector');
+            const aiBtn = document.getElementById('ai-enhance-btn');
+
+            // Populate Day Selector
+            specialsData.forEach((s, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = s.day;
+                daySelector.appendChild(opt);
+            });
+
+            // Open Modal
+            adminBtn.addEventListener('click', () => {
+                isPaused = true;
+                const pb = document.getElementById('progress-bar');
+                if(pb) pb.style.animationPlayState = 'paused';
+                
+                document.body.classList.add('admin-mode');
+                modal.classList.remove('hidden');
+                
+                // Select currently displayed special or first one
+                let idxToEdit = 0;
+                if(currentSlideIndex < specialsData.length) {
+                    idxToEdit = currentSlideIndex;
+                }
+                daySelector.value = idxToEdit;
+                populateForm(idxToEdit);
+            });
+
+            // Close Modal Logic
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                document.body.classList.remove('admin-mode');
+                isPaused = false;
+                const pb = document.getElementById('progress-bar');
+                if(pb) pb.style.animationPlayState = 'running';
+            };
+
+            closeBtn.addEventListener('click', closeModal);
+            cancelBtn.addEventListener('click', closeModal);
+
+            // Change Day Selection
+            daySelector.addEventListener('change', (e) => {
+                populateForm(e.target.value);
+            });
+
+            // Live Preview (partial)
+            ['input-image', 'input-color'].forEach(id => {
+                document.getElementById(id).addEventListener('input', () => {
+                    document.getElementById('preview-image').src = document.getElementById('input-image').value;
+                    document.getElementById('color-code').textContent = document.getElementById('input-color').value;
+                });
+            });
+
+            // Save
+            saveBtn.addEventListener('click', () => {
+                const idx = parseInt(daySelector.value);
+                const updated = {
+                    ...specialsData[idx],
+                    title: document.getElementById('input-title').value,
+                    price: document.getElementById('input-price').value,
+                    description: document.getElementById('input-description').value,
+                    imageUrl: document.getElementById('input-image').value,
+                    highlightColor: document.getElementById('input-color').value
+                };
+                
+                specialsData[idx] = updated;
+                saveSpecials(specialsData);
+                
+                // Re-render app but try to keep slide index
+                renderApp();
+                
+                // Restart animation
+                const pb = document.getElementById('progress-bar');
+                if(pb) {
+                    pb.classList.remove('animate-progress');
+                    void pb.offsetWidth;
+                    pb.classList.add('animate-progress');
+                }
+
+                closeModal();
+            });
+
+            // AI Enhance
+            aiBtn.addEventListener('click', async () => {
+                const title = document.getElementById('input-title').value;
+                const desc = document.getElementById('input-description').value;
+                const day = daySelector.options[daySelector.selectedIndex].text;
+                
+                if(!title || !desc) {
+                    alert("Please ensure title and description are filled out before enhancing.");
+                    return;
+                }
+
+                const originalText = aiBtn.innerHTML;
+                aiBtn.innerHTML = '<span class="animate-pulse">Thinking...</span>';
+                aiBtn.disabled = true;
+
+                try {
+                    // Check if API key is roughly valid (not empty)
+                    if(!process.env.API_KEY || process.env.API_KEY.length < 5) {
+                         alert("AI Enhancement requires an API Key. Please configure process.env.API_KEY.");
+                         throw new Error("No API Key");
+                    }
+
+                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                    const prompt = `You are a copywriter for Coasters Tavern. Rewrite this menu item to be appetizing and premium.\nDay: ${day}\nTitle: ${title}\nDesc: ${desc}\nReturn JSON with keys "title" and "description" (max 25 words).`;
+                    
+                    const response = await ai.models.generateContent({
+                        model: "gemini-3-flash-preview",
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    title: { type: Type.STRING },
+                                    description: { type: Type.STRING }
+                                },
+                                required: ["title", "description"]
+                            }
+                        }
+                    });
+                    
+                    const result = JSON.parse(response.text);
+                    if(result.title) document.getElementById('input-title').value = result.title;
+                    if(result.description) document.getElementById('input-description').value = result.description;
+
+                } catch (e) {
+                    console.error("AI Error:", e);
+                    if(e.message !== "No API Key") alert("Failed to generate AI suggestions.");
+                } finally {
+                    aiBtn.innerHTML = originalText;
+                    aiBtn.disabled = false;
+                }
+            });
+        }
+
+        function populateForm(idx) {
+            const data = specialsData[idx];
+            document.getElementById('input-title').value = data.title;
+            document.getElementById('input-price').value = data.price;
+            document.getElementById('input-description').value = data.description;
+            document.getElementById('input-image').value = data.imageUrl;
+            document.getElementById('input-color').value = data.highlightColor;
+            
+            document.getElementById('preview-image').src = data.imageUrl;
+            document.getElementById('color-code').textContent = data.highlightColor;
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+
+    </script>
+</body>
+</html>
