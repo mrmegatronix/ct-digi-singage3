@@ -257,6 +257,8 @@
         let slideInterval = null;
         let currentSlideIndex = 0;
         let isPaused = false;
+        let isLocked = false;
+        let slideDuration = 30000;
         
         const SLIDE_DURATION = 30000;
         const WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast?latitude=-43.5321&longitude=172.6362&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Pacific%2FAuckland";
@@ -372,15 +374,35 @@
         function startSlideshow() {
             const progressBar = document.getElementById('progress-bar');
             if(progressBar) {
-                progressBar.style.animationDuration = `${SLIDE_DURATION}ms`;
+                progressBar.style.animationDuration = `${slideDuration}ms`;
                 progressBar.classList.add('animate-progress');
                 
                 progressBar.addEventListener('animationend', handleSlideChange);
             }
         }
 
+        function goToSlide(index) {
+            const slides = document.querySelectorAll('.slide');
+            const total = slides.length;
+            if (total === 0) return;
+
+            slides[currentSlideIndex].classList.remove('active');
+            currentSlideIndex = ((index % total) + total) % total;
+            slides[currentSlideIndex].classList.add('active');
+
+            const progressBar = document.getElementById('progress-bar');
+            if(progressBar) {
+                progressBar.style.animationDuration = `${slideDuration}ms`;
+                progressBar.classList.remove('animate-progress');
+                void progressBar.offsetWidth; // Force reflow
+                if (!isPaused && !isLocked) {
+                    progressBar.classList.add('animate-progress');
+                }
+            }
+        }
+
         function handleSlideChange() {
-            if (isPaused) return;
+            if (isPaused || isLocked) return;
 
             const slides = document.querySelectorAll('.slide');
             const total = slides.length;
@@ -392,6 +414,7 @@
 
             const progressBar = document.getElementById('progress-bar');
             if(progressBar) {
+                progressBar.style.animationDuration = `${slideDuration}ms`;
                 progressBar.classList.remove('animate-progress');
                 void progressBar.offsetWidth; // Force reflow
                 progressBar.classList.add('animate-progress');
@@ -666,6 +689,85 @@
             document.getElementById('preview-image').src = data.imageUrl;
             document.getElementById('color-code').textContent = data.highlightColor;
         }
+
+        function showHudToast(text) {
+            let toast = document.getElementById('kb-hud-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'kb-hud-toast';
+                toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(0,0,0,0.85);color:#fff;border:1px solid rgba(255,255,255,0.25);padding:10px 18px;border-radius:10px;font-size:15px;font-weight:600;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.6);letter-spacing:0.5px;pointer-events:none;transition:opacity 0.2s ease;';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = text;
+            toast.style.opacity = '1';
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => { toast.style.opacity = '0'; }, 1600);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+            if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || document.activeElement?.isContentEditable) return;
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                goToSlide(currentSlideIndex - 1);
+                showHudToast('Prev Slide');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                goToSlide(currentSlideIndex + 1);
+                showHudToast('Next Slide');
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                goToSlide(0);
+                showHudToast('Restart Module');
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: 'SKIP_MODULE' }, '*');
+                }
+                showHudToast('Next Module');
+            } else if (e.key === ' ' || e.code === 'Space') {
+                e.preventDefault();
+                isPaused = !isPaused;
+                const pb = document.getElementById('progress-bar');
+                if (pb) pb.style.animationPlayState = (isPaused || isLocked) ? 'paused' : 'running';
+                showHudToast(isPaused ? 'Paused' : 'Playing');
+            } else if (e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                const adminBtn = document.getElementById('admin-btn');
+                if (adminBtn) adminBtn.click();
+            } else if (e.key === 'r' || e.key === 'R') {
+                e.preventDefault();
+                window.open('remote.html', '_blank');
+            } else if (e.key >= '1' && e.key <= '9') {
+                e.preventDefault();
+                const secs = parseInt(e.key, 10) * 10;
+                slideDuration = secs * 1000;
+                const pb = document.getElementById('progress-bar');
+                if (pb) {
+                    pb.style.animationDuration = `${slideDuration}ms`;
+                    pb.classList.remove('animate-progress');
+                    void pb.offsetWidth;
+                    if (!isPaused && !isLocked) pb.classList.add('animate-progress');
+                }
+                showHudToast(`Speed: ${secs}s`);
+            } else if (e.key === '0') {
+                e.preventDefault();
+                isLocked = !isLocked;
+                const pb = document.getElementById('progress-bar');
+                if (pb) pb.style.animationPlayState = (isPaused || isLocked) ? 'paused' : 'running';
+                showHudToast(isLocked ? 'Slide Locked' : 'Slide Unlocked');
+            }
+        });
+
+        window.addEventListener('message', (e) => {
+            if (!e.data) return;
+            if (e.data.type === 'SKIP_MODULE') {
+                if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'SKIP_MODULE' }, '*');
+            } else if (e.data.type === 'GOTO_FIRST') {
+                goToSlide(0);
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', initApp);
 
