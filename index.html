@@ -371,14 +371,25 @@
             }
         }
 
+        let slideTimeout = null;
+
+        function scheduleSlideTimeout() {
+            clearTimeout(slideTimeout);
+            if (!isPaused && !isLocked) {
+                slideTimeout = setTimeout(() => {
+                    handleSlideChange();
+                }, slideDuration + 300);
+            }
+        }
+
         function startSlideshow() {
             const progressBar = document.getElementById('progress-bar');
             if(progressBar) {
                 progressBar.style.animationDuration = `${slideDuration}ms`;
                 progressBar.classList.add('animate-progress');
-                
                 progressBar.addEventListener('animationend', handleSlideChange);
             }
+            scheduleSlideTimeout();
         }
 
         function goToSlide(index) {
@@ -399,9 +410,11 @@
                     progressBar.classList.add('animate-progress');
                 }
             }
+            scheduleSlideTimeout();
         }
 
         function handleSlideChange() {
+            clearTimeout(slideTimeout);
             if (isPaused || isLocked) return;
 
             const slides = document.querySelectorAll('.slide');
@@ -419,6 +432,7 @@
                 void progressBar.offsetWidth; // Force reflow
                 progressBar.classList.add('animate-progress');
             }
+            scheduleSlideTimeout();
         }
 
         // --- TEMPLATES ---
